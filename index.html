@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подбор лекарств от боли</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            background-color: #f4f7f6;
+            color: #333;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: #ffffff;
+            padding: 25px;
+            border-radius: 16px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+            color: #1a202c;
+        }
+
+        .subtitle {
+            font-size: 14px;
+            color: #718096;
+            margin-bottom: 20px;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 16px;
+            outline: none;
+        }
+
+        input:focus {
+            border-color: #3182ce;
+        }
+
+        button {
+            padding: 12px 20px;
+            background-color: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background-color: #2b6cb0;
+        }
+
+        .loader {
+            text-align: center;
+            padding: 20px;
+            font-size: 16px;
+            color: #4a5568;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .results-grid {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 10px;
+        }
+
+        .card {
+            display: flex;
+            gap: 15px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 15px;
+            align-items: center;
+        }
+
+        .card img {
+            width: 90px;
+            height: 90px;
+            object-fit: cover;
+            border-radius: 8px;
+            background-color: #edf2f7;
+        }
+
+        .card-info h3 {
+            font-size: 18px;
+            color: #2d3748;
+            margin-bottom: 5px;
+        }
+
+        .card-info p {
+            font-size: 14px;
+            color: #4a5568;
+            line-height: 1.4;
+        }
+
+        .error-box {
+            background-color: #fff5f5;
+            border: 1px solid #feb2b2;
+            border-radius: 10px;
+            padding: 15px;
+            color: #c53030;
+            font-size: 14px;
+        }
+
+        .disclaimer {
+            margin-top: 25px;
+            padding: 12px;
+            background-color: #fffaf0;
+            border: 1px solid #feebc8;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #742a2a;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Симптом-Помощник 💊</h1>
+        <p class="subtitle">Напиши, что у тебя болит, и нейросеть подберет варианты</p>
+
+        <div class="search-box">
+            <input type="text" id="symptomInput" placeholder="Например: болит желудок, головная боль..." />
+            <button id="searchBtn">Найти</button>
+        </div>
+
+        <div id="loader" class="loader hidden">Нейросеть ищет варианты...</div>
+
+        <div id="results" class="results-grid"></div>
+
+        <div class="disclaimer">
+            ⚠️ <b>Внимание:</b> Результаты сгенерированы нейросетью в ознакомительных целях. Перед приемом лекарств обязательно проконсультируйтесь с врачом.
+        </div>
+    </div>
+
+    <script>
+        const API_KEY = "ТВОЙ_API_KEY_GEMINI";
+
+        const symptomInput = document.getElementById('symptomInput');
+        const searchBtn = document.getElementById('searchBtn');
+        const resultsContainer = document.getElementById('results');
+        const loader = document.getElementById('loader');
+
+        searchBtn.addEventListener('click', handleSearch);
+        symptomInput.addEventListener('keyup', (e) => {
+            if (e.key === 'Enter') handleSearch();
+        });
+
+        async function handleSearch() {
+            const query = symptomInput.value.trim();
+            if (!query) return;
+
+            resultsContainer.innerHTML = '';
+            loader.classList.remove('hidden');
+
+            try {
+                const medicines = await fetchFromGemini(query);
+                displayResults(medicines);
+            } catch (error) {
+                console.error("Ошибка:", error);
+                resultsContainer.innerHTML = `
+                    <div class="error-box">
+                        <b>Ошибка запроса к API.</b><br>
+                        Убедитесь, что сайт запущен через GitHub Pages (HTTPS), а не локально с диска, и что в код вставлен корректный API-ключ.
+                    </div>`;
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        async function fetchFromGemini(userQuery) {
+            const prompt = `Пользователь жалуется на: "${userQuery}".
+            Назови ровно 3 лекарства/таблетки, которые чаще всего применяются при таком симптоме.
+            Верни ответ СТРОГО в формате JSON-массива из 3 объектов без лишнего текста и без markdown разметки:
+            [
+              {"name": "Название1", "desc": "Короткое описание 1-2 предложения, чем помогает"},
+              {"name": "Название2", "desc": "Короткое описание 1-2 предложения, чем помогает"},
+              {"name": "Название3", "desc": "Короткое описание 1-2 предложения, чем помогает"}
+            ]`;
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+
+            if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+
+            const data = await response.json();
+            let rawText = data.candidates[0].content.parts[0].text;
+            rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+
+            return JSON.parse(rawText);
+        }
+
+        function displayResults(medicines) {
+            medicines.forEach(med => {
+                const card = document.createElement('div');
+                card.className = 'card';
+                const imageUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(med.name)}.jpg?width=300`;
+
+                card.innerHTML = `
+                    <img src="${imageUrl}" alt="${med.name}" onerror="this.src='https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=200&q=80'">
+                    <div class="card-info">
+                        <h3>${med.name}</h3>
+                        <p>${med.desc}</p>
+                    </div>`;
+
+                resultsContainer.appendChild(card);
+            });
+        }
+    </script>
+</body>
+</html>
